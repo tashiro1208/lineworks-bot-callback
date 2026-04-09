@@ -8,38 +8,41 @@ app.use(express.json());
 
 /**
  * 担当者マスタ
- * 左が「メッセージに書く名前」
- * 右が「LINE WORKSの実ユーザーID」
+ * 左側 = メッセージで書く名前
+ * userId = LINE WORKSの実ユーザーID
  *
- * ※ userId は後で実際の値に置き換える
+ * ここだけ後で本物に置き換える
  */
 const ASSIGNEE_MASTER = {
-  "FUJI子さん": {
-    userId: "USER_ID_FUJIKO",
-    displayName: "FUJI子さん"
+  "フジ子さんチーム": {
+    userId: "USER_ID_FUJIKO_TEAM",
+    displayName: "フジ子さんチーム"
   },
-  "田代さん": {
-    userId: "USER_ID_TASHIRO",
-    displayName: "田代さん"
+  "田代健": {
+    userId: "USER_ID_KEN_TASHIRO",
+    displayName: "田代健"
+  },
+  "坂下めぐみ": {
+    userId: "USER_ID_MEGUMI_SAKASHITA",
+    displayName: "坂下めぐみ"
   }
 };
 
 /**
- * 重複作成防止用
- * 本番ではDB推奨だが、最初はメモリで簡易対応
+ * 簡易的な重複防止
  */
 const processedEvents = new Set();
 
 /**
- * ヘルスチェック
+ * 動作確認用
  */
 app.get("/", (req, res) => {
   res.send("Bot server is running");
 });
 
 /**
- * 文章例:
- * FUJI子さんへ
+ * 文章例
+ * フジ子さんチームへ
  * 4月21日までに請求書発行をお願いします
  */
 function parseTaskText(text) {
@@ -52,10 +55,9 @@ function parseTaskText(text) {
 
   if (lines.length === 0) return null;
 
-  const fullText = lines.join(" ");
   const assigneeLine = lines[0];
-
   const assigneeMatch = assigneeLine.match(/^(.+?)へ$/);
+
   if (!assigneeMatch) {
     return null;
   }
@@ -63,11 +65,10 @@ function parseTaskText(text) {
   const assigneeName = assigneeMatch[1].trim();
   const restText = lines.slice(1).join(" ").trim();
 
-  // 例: 4月21日までに請求書発行をお願いします
-  const deadlineMatch = restText.match(/(\d{1,2})月(\d{1,2})日までに/);
-
   let dueDate = null;
   let title = restText;
+
+  const deadlineMatch = restText.match(/(\d{1,2})月(\d{1,2})日までに/);
 
   if (deadlineMatch) {
     const month = Number(deadlineMatch[1]);
@@ -77,15 +78,13 @@ function parseTaskText(text) {
     let year = now.getFullYear();
 
     const tentative = new Date(year, month - 1, day);
-    if (tentative < new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)) {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (tentative < today) {
       year += 1;
     }
 
-    const yyyy = String(year);
-    const mm = String(month).padStart(2, "0");
-    const dd = String(day).padStart(2, "0");
-    dueDate = `${yyyy}-${mm}-${dd}`;
-
+    dueDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     title = restText.replace(/^\d{1,2}月\d{1,2}日までに/, "").trim();
   }
 
@@ -98,8 +97,7 @@ function parseTaskText(text) {
 }
 
 /**
- * Service Account JWT でアクセストークン取得
- * ※ env の値は後で Render に入れる
+ * LINE WORKSのアクセストークン取得
  */
 async function getAccessToken() {
   const now = Math.floor(Date.now() / 1000);
@@ -111,12 +109,14 @@ async function getAccessToken() {
     exp: now + 300
   };
 
-  const token = jwt.sign(payload, process.env.LW_PRIVATE_KEY.replace(/\\n/g, "\n"), {
-    algorithm: "RS256"
-  });
+  const signedJwt = jwt.sign(
+    payload,
+    process.env.LW_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    { algorithm: "RS256" }
+  );
 
   const params = new URLSearchParams();
-  params.append("assertion", token);
+  params.append("assertion", signedJwt);
   params.append("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
   params.append("client_id", process.env.LW_CLIENT_ID);
   params.append("client_secret", process.env.LW_CLIENT_SECRET);
@@ -137,21 +137,21 @@ async function getAccessToken() {
 
 /**
  * タスク作成
- * ここはあなたのテナント・API仕様に合わせて最終調整が必要
+ * URLとbody項目名は、あなたのLINE WORKS API設定に合わせて最終調整が必要
  */
 async function createTask({ assigneeUserId, title, dueDate, note }) {
   const accessToken = await getAccessToken();
 
-  const body = {
-    title,
+  const requestBody = {
+    title: title || "未設定",
     assigneeId: assigneeUserId,
-    dueDate,
-    note
+    dueDate: dueDate,
+    note: note
   };
 
   const response = await axios.post(
     process.env.LW_TASK_CREATE_URL,
-    body,
+    requestBody,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -164,11 +164,11 @@ async function createTask({ assigneeUserId, title, dueDate, note }) {
 }
 
 /**
- * 必要に応じてBotから確認メッセージを返すための土台
- * 今はログだけにしておく
+ * 結果通知
+ * 今はログだけ
  */
 async function notifyResult(message) {
-  console.log("通知メッセージ:", message);
+  console.log("通知:", message);
 }
 
 /**
@@ -178,10 +178,9 @@ app.post("/callback", async (req, res) => {
   try {
     console.log("受信データ:", JSON.stringify(req.body, null, 2));
 
-    // Callbackはまず200を返す
+    // LINE WORKSには先に200を返す
     res.status(200).send("OK");
 
-    const event = req.body?.source || req.body;
     const eventId =
       req.body?.content?.eventId ||
       req.body?.eventId ||
@@ -204,21 +203,23 @@ app.post("/callback", async (req, res) => {
     }
 
     const parsed = parseTaskText(text);
+
     if (!parsed) {
       console.log("タスク形式ではないため終了");
       return;
     }
 
     const assignee = ASSIGNEE_MASTER[parsed.assigneeName];
+
     if (!assignee) {
-      await notifyResult(`担当者マスタ未登録: ${parsed.assigneeName}`);
       console.log("担当者マスタ未登録:", parsed.assigneeName);
+      await notifyResult(`担当者マスタ未登録: ${parsed.assigneeName}`);
       return;
     }
 
     const result = await createTask({
       assigneeUserId: assignee.userId,
-      title: parsed.title || "未設定",
+      title: parsed.title,
       dueDate: parsed.dueDate,
       note: parsed.originalText
     });
