@@ -1,17 +1,16 @@
 const express = require("express");
 const crypto = require("crypto");
 const axios = require("axios");
-const jwt = require("jsonwebtoken");
 
 const app = express();
 app.use(express.json());
 
 /**
  * 担当者マスタ
- * 左側 = メッセージで書く名前
- * userId = LINE WORKSの実ユーザーID
+ * 左側 = メッセージに書く名前
+ * 右側 = LINE WORKSの実ユーザーID
  *
- * ここだけ後で本物に置き換える
+ * ※ ここは後で本物のユーザーIDに置き換える
  */
 const ASSIGNEE_MASTER = {
   "フジ子さんチーム": {
@@ -28,20 +27,14 @@ const ASSIGNEE_MASTER = {
   }
 };
 
-/**
- * 簡易的な重複防止
- */
 const processedEvents = new Set();
 
-/**
- * 動作確認用
- */
 app.get("/", (req, res) => {
   res.send("Bot server is running");
 });
 
 /**
- * 文章例
+ * 例:
  * フジ子さんチームへ
  * 4月21日までに請求書発行をお願いします
  */
@@ -53,14 +46,11 @@ function parseTaskText(text) {
     .map(v => v.trim())
     .filter(Boolean);
 
-  if (lines.length === 0) return null;
+  if (lines.length < 2) return null;
 
   const assigneeLine = lines[0];
   const assigneeMatch = assigneeLine.match(/^(.+?)へ$/);
-
-  if (!assigneeMatch) {
-    return null;
-  }
+  if (!assigneeMatch) return null;
 
   const assigneeName = assigneeMatch[1].trim();
   const restText = lines.slice(1).join(" ").trim();
@@ -69,7 +59,6 @@ function parseTaskText(text) {
   let title = restText;
 
   const deadlineMatch = restText.match(/(\d{1,2})月(\d{1,2})日までに/);
-
   if (deadlineMatch) {
     const month = Number(deadlineMatch[1]);
     const day = Number(deadlineMatch[2]);
@@ -97,30 +86,15 @@ function parseTaskText(text) {
 }
 
 /**
- * LINE WORKSのアクセストークン取得
+ * Refresh Token から Access Token を取得
+ * ※ LW_REFRESH_TOKEN はあとで Render に設定
  */
 async function getAccessToken() {
-  const now = Math.floor(Date.now() / 1000);
-
-  const payload = {
-    iss: process.env.LW_CLIENT_ID,
-    sub: process.env.LW_SERVICE_ACCOUNT,
-    iat: now,
-    exp: now + 300
-  };
-
-  const signedJwt = jwt.sign(
-    payload,
-    process.env.LW_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    { algorithm: "RS256" }
-  );
-
   const params = new URLSearchParams();
-  params.append("assertion", signedJwt);
-  params.append("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+  params.append("grant_type", "refresh_token");
   params.append("client_id", process.env.LW_CLIENT_ID);
   params.append("client_secret", process.env.LW_CLIENT_SECRET);
-  params.append("scope", process.env.LW_SCOPE || "task");
+  params.append("refresh_token", process.env.LW_REFRESH_TOKEN);
 
   const response = await axios.post(
     process.env.LW_TOKEN_URL,
@@ -137,7 +111,7 @@ async function getAccessToken() {
 
 /**
  * タスク作成
- * URLとbody項目名は、あなたのLINE WORKS API設定に合わせて最終調整が必要
+ * ※ API URL と body の項目名は最終的に実環境に合わせて微調整が必要
  */
 async function createTask({ assigneeUserId, title, dueDate, note }) {
   const accessToken = await getAccessToken();
@@ -163,22 +137,14 @@ async function createTask({ assigneeUserId, title, dueDate, note }) {
   return response.data;
 }
 
-/**
- * 結果通知
- * 今はログだけ
- */
 async function notifyResult(message) {
   console.log("通知:", message);
 }
 
-/**
- * Callback受信
- */
 app.post("/callback", async (req, res) => {
   try {
     console.log("受信データ:", JSON.stringify(req.body, null, 2));
 
-    // LINE WORKSには先に200を返す
     res.status(200).send("OK");
 
     const eventId =
@@ -203,14 +169,12 @@ app.post("/callback", async (req, res) => {
     }
 
     const parsed = parseTaskText(text);
-
     if (!parsed) {
       console.log("タスク形式ではないため終了");
       return;
     }
 
     const assignee = ASSIGNEE_MASTER[parsed.assigneeName];
-
     if (!assignee) {
       console.log("担当者マスタ未登録:", parsed.assigneeName);
       await notifyResult(`担当者マスタ未登録: ${parsed.assigneeName}`);
