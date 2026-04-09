@@ -34,6 +34,46 @@ app.get("/", (req, res) => {
 });
 
 /**
+ * OAuth認可コード受け取り用
+ * ブラウザで認可後、ここに戻ってきて code を表示する
+ */
+app.get("/oauth/callback", (req, res) => {
+  const code = req.query.code || "";
+  const state = req.query.state || "";
+  const error = req.query.error || "";
+  const errorDescription = req.query.error_description || "";
+
+  res.send(`
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>LINE WORKS OAuth Callback</title>
+      </head>
+      <body style="font-family: sans-serif; padding: 24px;">
+        <h2>OAuth Callback Result</h2>
+        <p><strong>code</strong></p>
+        <pre>${escapeHtml(code)}</pre>
+        <p><strong>state</strong></p>
+        <pre>${escapeHtml(state)}</pre>
+        <p><strong>error</strong></p>
+        <pre>${escapeHtml(error)}</pre>
+        <p><strong>error_description</strong></p>
+        <pre>${escapeHtml(errorDescription)}</pre>
+      </body>
+    </html>
+  `);
+});
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
  * 例:
  * フジ子さんチームへ
  * 4月21日までに請求書発行をお願いします
@@ -87,7 +127,7 @@ function parseTaskText(text) {
 
 /**
  * Refresh Token から Access Token を取得
- * ※ LW_REFRESH_TOKEN はあとで Render に設定
+ * ※ これは Refresh Token が取れてから使う
  */
 async function getAccessToken() {
   const params = new URLSearchParams();
@@ -111,7 +151,7 @@ async function getAccessToken() {
 
 /**
  * タスク作成
- * ※ API URL と body の項目名は最終的に実環境に合わせて微調整が必要
+ * ※ API URL と body の項目名は最終的に実環境に合わせて調整が必要
  */
 async function createTask({ assigneeUserId, title, dueDate, note }) {
   const accessToken = await getAccessToken();
@@ -178,6 +218,19 @@ app.post("/callback", async (req, res) => {
     if (!assignee) {
       console.log("担当者マスタ未登録:", parsed.assigneeName);
       await notifyResult(`担当者マスタ未登録: ${parsed.assigneeName}`);
+      return;
+    }
+
+    if (
+      !process.env.LW_REFRESH_TOKEN ||
+      process.env.LW_REFRESH_TOKEN === "TEMP" ||
+      !process.env.LW_TASK_CREATE_URL ||
+      process.env.LW_TASK_CREATE_URL === "TEMP"
+    ) {
+      console.log("Refresh Token または Task API URL 未設定のため、タスク作成は未実行");
+      await notifyResult(
+        `解析成功: ${assignee.displayName} / ${parsed.title} / due=${parsed.dueDate || "なし"}`
+      );
       return;
     }
 
