@@ -35,7 +35,6 @@ app.get("/", (req, res) => {
 
 /**
  * OAuth認可コード受け取り用
- * ブラウザで認可後、ここに戻ってきて code を表示する
  */
 app.get("/oauth/callback", (req, res) => {
   const code = req.query.code || "";
@@ -75,7 +74,7 @@ function escapeHtml(value) {
 
 /**
  * 例:
- * フジ子さんチームへ
+ * 田代健へ
  * 4月21日までに請求書発行をお願いします
  */
 function parseTaskText(text) {
@@ -127,7 +126,6 @@ function parseTaskText(text) {
 
 /**
  * Refresh Token から Access Token を取得
- * ※ これは Refresh Token が取れてから使う
  */
 async function getAccessToken() {
   const params = new URLSearchParams();
@@ -150,21 +148,21 @@ async function getAccessToken() {
 }
 
 /**
- * タスク作成
- * ※ API URL と body の項目名は最終的に実環境に合わせて調整が必要
+ * LINE WORKS タスク作成
+ * 実行先:
+ * https://www.worksapis.com/v1.0/users/{userId}/tasks
  */
 async function createTask({ assigneeUserId, title, dueDate, note }) {
   const accessToken = await getAccessToken();
 
   const requestBody = {
     title: title || "未設定",
-    assigneeId: assigneeUserId,
-    dueDate: dueDate,
-    note: note
+    due: dueDate ? `${dueDate}T09:00:00+09:00` : undefined,
+    memo: note
   };
 
   const response = await axios.post(
-    process.env.LW_TASK_CREATE_URL,
+    `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
     requestBody,
     {
       headers: {
@@ -223,11 +221,9 @@ app.post("/callback", async (req, res) => {
 
     if (
       !process.env.LW_REFRESH_TOKEN ||
-      process.env.LW_REFRESH_TOKEN === "TEMP" ||
-      !process.env.LW_TASK_CREATE_URL ||
-      process.env.LW_TASK_CREATE_URL === "TEMP"
+      process.env.LW_REFRESH_TOKEN === "TEMP"
     ) {
-      console.log("Refresh Token または Task API URL 未設定のため、タスク作成は未実行");
+      console.log("Refresh Token 未設定のため、タスク作成は未実行");
       await notifyResult(
         `解析成功: ${assignee.displayName} / ${parsed.title} / due=${parsed.dueDate || "なし"}`
       );
