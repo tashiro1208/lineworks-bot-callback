@@ -135,25 +135,23 @@ async function createTask({ assigneeUserId, title, dueDate, note }) {
         assigneeId: assigneeUserId
       }
     ],
+    assignmentType: "ANY_ONE",
     due: dueDate ? `${dueDate}T09:00:00+09:00` : undefined,
     memo: note
   };
 
-  const jsonBody = JSON.stringify(requestBody);
+  console.log("タスク作成リクエスト:", JSON.stringify(requestBody, null, 2));
 
-  console.log("タスク作成リクエスト:", jsonBody);
-
-  const response = await axios({
-    method: "post",
-    url: `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json; charset=UTF-8",
-      "Content-Length": Buffer.byteLength(jsonBody, "utf8")
-    },
-    data: jsonBody,
-    maxBodyLength: Infinity
-  });
+  const response = await axios.post(
+    `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
+    requestBody,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
 
   return response.data;
 }
