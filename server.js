@@ -157,7 +157,8 @@ async function getAccessToken() {
 async function createTask({ assigneeUserId, title, content, dueDate }) {
   const accessToken = await getAccessToken();
 
-  const requestBody = {
+    const requestBody = {
+    assignorId: assigneeUserId,
     assignees: [
       {
         assigneeId: assigneeUserId,
