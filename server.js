@@ -27,6 +27,30 @@ app.get("/", (req, res) => {
   res.send("Bot server is running");
 });
 
+/**
+ * Task API 単体テスト用
+ * ブラウザで /test-task を開くと固定タスク作成を試す
+ */
+app.get("/test-task", async (req, res) => {
+  try {
+    const result = await createTask({
+      assigneeUserId: "50bde2c2-34b1-401e-10db-05079b77bc42",
+      title: "テストタスク",
+      dueDate: "2026-04-21"
+    });
+
+    res.json({
+      ok: true,
+      result
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message || String(error)
+    });
+  }
+});
+
 app.get("/oauth/callback", (req, res) => {
   const code = req.query.code || "";
   const state = req.query.state || "";
