@@ -116,15 +116,11 @@ async function getAccessToken() {
   params.append("client_secret", process.env.LW_CLIENT_SECRET);
   params.append("refresh_token", process.env.LW_REFRESH_TOKEN);
 
-  const response = await axios.post(
-    process.env.LW_TOKEN_URL,
-    params,
-    {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
+  const response = await axios.post(process.env.LW_TOKEN_URL, params, {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
     }
-  );
+  });
 
   return response.data.access_token;
 }
@@ -146,7 +142,7 @@ async function createTask({ assigneeUserId, title, dueDate, note }) {
   console.log("タスク作成リクエスト:", JSON.stringify(requestBody, null, 2));
 
   const response = await axios.post(
-    "https://www.worksapis.com/v1.0/tasks",
+    `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
     requestBody,
     {
       headers: {
