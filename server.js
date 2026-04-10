@@ -5,13 +5,6 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-/**
- * 担当者マスタ
- * 左側 = メッセージに書く名前
- * 右側 = LINE WORKSの実ユーザーID
- *
- * ※ ここは後で本物のユーザーIDに置き換える
- */
 const ASSIGNEE_MASTER = {
   "フジ子さんチーム": {
     userId: "USER_ID_FUJIKO_TEAM",
@@ -33,9 +26,6 @@ app.get("/", (req, res) => {
   res.send("Bot server is running");
 });
 
-/**
- * OAuth認可コード受け取り用
- */
 app.get("/oauth/callback", (req, res) => {
   const code = req.query.code || "";
   const state = req.query.state || "";
@@ -72,11 +62,6 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-/**
- * 例:
- * 田代健へ
- * 4月21日までに請求書発行をお願いします
- */
 function parseTaskText(text) {
   if (!text) return null;
 
@@ -124,9 +109,6 @@ function parseTaskText(text) {
   };
 }
 
-/**
- * Refresh Token から Access Token を取得
- */
 async function getAccessToken() {
   const params = new URLSearchParams();
   params.append("grant_type", "refresh_token");
@@ -147,22 +129,24 @@ async function getAccessToken() {
   return response.data.access_token;
 }
 
-/**
- * LINE WORKS タスク作成
- * 実行先:
- * https://www.worksapis.com/v1.0/users/{userId}/tasks
- */
 async function createTask({ assigneeUserId, title, dueDate, note }) {
   const accessToken = await getAccessToken();
 
   const requestBody = {
     title: title || "未設定",
+    assignees: [
+      {
+        assigneeId: assigneeUserId
+      }
+    ],
     due: dueDate ? `${dueDate}T09:00:00+09:00` : undefined,
     memo: note
   };
 
+  console.log("タスク作成リクエスト:", JSON.stringify(requestBody, null, 2));
+
   const response = await axios.post(
-    `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
+    "https://www.worksapis.com/v1.0/tasks",
     requestBody,
     {
       headers: {
@@ -219,10 +203,7 @@ app.post("/callback", async (req, res) => {
       return;
     }
 
-    if (
-      !process.env.LW_REFRESH_TOKEN ||
-      process.env.LW_REFRESH_TOKEN === "TEMP"
-    ) {
+    if (!process.env.LW_REFRESH_TOKEN || process.env.LW_REFRESH_TOKEN === "TEMP") {
       console.log("Refresh Token 未設定のため、タスク作成は未実行");
       await notifyResult(
         `解析成功: ${assignee.displayName} / ${parsed.title} / due=${parsed.dueDate || "なし"}`
