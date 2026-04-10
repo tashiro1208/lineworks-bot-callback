@@ -27,15 +27,12 @@ app.get("/", (req, res) => {
   res.send("Bot server is running");
 });
 
-/**
- * Task API 単体テスト用
- * ブラウザで /test-task を開くと固定タスク作成を試す
- */
 app.get("/test-task", async (req, res) => {
   try {
     const result = await createTask({
       assigneeUserId: "50bde2c2-34b1-401e-10db-05079b77bc42",
       title: "テストタスク",
+      content: "テスト内容",
       dueDate: "2026-04-21"
     });
 
@@ -105,7 +102,7 @@ function parseTaskText(text) {
   const restText = lines.slice(1).join(" ").trim();
 
   let dueDate = null;
-  let title = restText;
+  let content = restText;
 
   const deadlineMatch = restText.match(/(\d{1,2})月(\d{1,2})日までに/);
   if (deadlineMatch) {
@@ -123,12 +120,13 @@ function parseTaskText(text) {
     }
 
     dueDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    title = restText.replace(/^\d{1,2}月\d{1,2}日までに/, "").trim();
+    content = restText.replace(/^\d{1,2}月\d{1,2}日までに/, "").trim();
   }
 
   return {
     assigneeName,
-    title,
+    title: content,
+    content,
     dueDate,
     originalText: text
   };
@@ -150,18 +148,20 @@ async function getAccessToken() {
   return response.data.access_token;
 }
 
-async function createTask({ assigneeUserId, title, dueDate }) {
+async function createTask({ assigneeUserId, title, content, dueDate }) {
   const accessToken = await getAccessToken();
 
   const requestBody = {
-    content: title || "未設定",
-    dueDate: dueDate || undefined,
     assignees: [
       {
-        assigneeId: assigneeUserId
+        assigneeId: assigneeUserId,
+        status: "TODO"
       }
     ],
-    assignmentType: "ANY_ONE"
+    title: title || "未設定",
+    content: content || title || "未設定",
+    dueDate: dueDate || undefined,
+    completionCondition: "ANY_ONE"
   };
 
   const jsonBody = JSON.stringify(requestBody);
@@ -249,17 +249,10 @@ app.post("/callback", async (req, res) => {
       return;
     }
 
-    if (!process.env.LW_REFRESH_TOKEN || process.env.LW_REFRESH_TOKEN === "TEMP") {
-      console.log("Refresh Token 未設定のため、タスク作成は未実行");
-      await notifyResult(
-        `解析成功: ${assignee.displayName} / ${parsed.title} / due=${parsed.dueDate || "なし"}`
-      );
-      return;
-    }
-
     const result = await createTask({
       assigneeUserId: assignee.userId,
       title: parsed.title,
+      content: parsed.content,
       dueDate: parsed.dueDate
     });
 
