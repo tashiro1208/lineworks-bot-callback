@@ -6,6 +6,10 @@ const https = require("https");
 const app = express();
 app.use(express.json());
 
+/**
+ * 担当者マスタ
+ * ここに実ユーザーIDを入れる
+ */
 const ASSIGNEE_MASTER = {
   "フジ子さんチーム": {
     userId: "USER_ID_FUJIKO_TEAM",
@@ -26,63 +30,6 @@ const processedEvents = new Set();
 app.get("/", (req, res) => {
   res.send("Bot server is running");
 });
-
-app.get("/test-task", async (req, res) => {
-  try {
-    const result = await createTask({
-      assigneeUserId: "50bde2c2-34b1-401e-10db-05079b77bc42",
-      title: "テストタスク",
-      content: "テスト内容",
-      dueDate: "2026-04-21"
-    });
-
-    res.json({
-      ok: true,
-      result
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message || String(error)
-    });
-  }
-});
-
-app.get("/oauth/callback", (req, res) => {
-  const code = req.query.code || "";
-  const state = req.query.state || "";
-  const error = req.query.error || "";
-  const errorDescription = req.query.error_description || "";
-
-  res.send(`
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>LINE WORKS OAuth Callback</title>
-      </head>
-      <body style="font-family: sans-serif; padding: 24px;">
-        <h2>OAuth Callback Result</h2>
-        <p><strong>code</strong></p>
-        <pre>${escapeHtml(code)}</pre>
-        <p><strong>state</strong></p>
-        <pre>${escapeHtml(state)}</pre>
-        <p><strong>error</strong></p>
-        <pre>${escapeHtml(error)}</pre>
-        <p><strong>error_description</strong></p>
-        <pre>${escapeHtml(errorDescription)}</pre>
-      </body>
-    </html>
-  `);
-});
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function parseTaskText(text) {
   if (!text) return null;
@@ -145,8 +92,6 @@ async function getAccessToken() {
     }
   });
 
-  console.log("トークン取得レスポンス:", JSON.stringify(response.data, null, 2));
-
   if (!response.data || !response.data.access_token) {
     throw new Error(`access_token取得失敗: ${JSON.stringify(response.data)}`);
   }
@@ -154,11 +99,11 @@ async function getAccessToken() {
   return response.data.access_token;
 }
 
-async function createTask({ assigneeUserId, title, content, dueDate }) {
+async function createTask({ assignorUserId, assigneeUserId, title, content, dueDate }) {
   const accessToken = await getAccessToken();
 
-    const requestBody = {
-    assignorId: assigneeUserId,
+  const requestBody = {
+    assignorId: assignorUserId,
     assignees: [
       {
         assigneeId: assigneeUserId,
@@ -176,7 +121,7 @@ async function createTask({ assigneeUserId, title, content, dueDate }) {
 
   const options = {
     hostname: "www.worksapis.com",
-    path: `/v1.0/users/${assigneeUserId}/tasks`,
+    path: `/v1.0/users/${assignorUserId}/tasks`,
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -210,10 +155,6 @@ async function createTask({ assigneeUserId, title, content, dueDate }) {
   });
 
   return JSON.parse(responseText);
-}
-
-async function notifyResult(message) {
-  console.log("通知:", message);
 }
 
 app.post("/callback", async (req, res) => {
@@ -252,11 +193,17 @@ app.post("/callback", async (req, res) => {
     const assignee = ASSIGNEE_MASTER[parsed.assigneeName];
     if (!assignee) {
       console.log("担当者マスタ未登録:", parsed.assigneeName);
-      await notifyResult(`担当者マスタ未登録: ${parsed.assigneeName}`);
+      return;
+    }
+
+    const assignorUserId = req.body?.source?.userId;
+    if (!assignorUserId) {
+      console.log("依頼者userId取得失敗");
       return;
     }
 
     const result = await createTask({
+      assignorUserId,
       assigneeUserId: assignee.userId,
       title: parsed.title,
       content: parsed.content,
@@ -264,7 +211,6 @@ app.post("/callback", async (req, res) => {
     });
 
     console.log("タスク作成成功:", JSON.stringify(result, null, 2));
-    await notifyResult(`タスク作成成功: ${assignee.displayName} / ${parsed.title}`);
   } catch (error) {
     console.error("処理エラー:", error.message || error);
   }
