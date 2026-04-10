@@ -139,18 +139,21 @@ async function createTask({ assigneeUserId, title, dueDate, note }) {
     memo: note
   };
 
-  console.log("タスク作成リクエスト:", JSON.stringify(requestBody, null, 2));
+  const jsonBody = JSON.stringify(requestBody);
 
-  const response = await axios.post(
-    `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
-    requestBody,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
+  console.log("タスク作成リクエスト:", jsonBody);
+
+  const response = await axios({
+    method: "post",
+    url: `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json; charset=UTF-8",
+      "Content-Length": Buffer.byteLength(jsonBody, "utf8")
+    },
+    data: jsonBody,
+    maxBodyLength: Infinity
+  });
 
   return response.data;
 }
@@ -196,14 +199,6 @@ app.post("/callback", async (req, res) => {
     if (!assignee) {
       console.log("担当者マスタ未登録:", parsed.assigneeName);
       await notifyResult(`担当者マスタ未登録: ${parsed.assigneeName}`);
-      return;
-    }
-
-    if (!process.env.LW_REFRESH_TOKEN || process.env.LW_REFRESH_TOKEN === "TEMP") {
-      console.log("Refresh Token 未設定のため、タスク作成は未実行");
-      await notifyResult(
-        `解析成功: ${assignee.displayName} / ${parsed.title} / due=${parsed.dueDate || "なし"}`
-      );
       return;
     }
 
