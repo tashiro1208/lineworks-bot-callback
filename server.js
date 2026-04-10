@@ -129,15 +129,14 @@ async function createTask({ assigneeUserId, title, dueDate, note }) {
   const accessToken = await getAccessToken();
 
   const requestBody = {
-    title: title || "未設定",
+    content: title || "未設定",
+    dueDate: dueDate || undefined,
     assignees: [
       {
         assigneeId: assigneeUserId
       }
     ],
-    assignmentType: "ANY_ONE",
-    due: dueDate ? `${dueDate}T09:00:00+09:00` : undefined,
-    memo: note
+    assignmentType: "ANY_ONE"
   };
 
   console.log("タスク作成リクエスト:", JSON.stringify(requestBody, null, 2));
