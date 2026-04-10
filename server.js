@@ -125,7 +125,7 @@ async function getAccessToken() {
   return response.data.access_token;
 }
 
-async function createTask({ assigneeUserId, title, dueDate, note }) {
+async function createTask({ assigneeUserId, title, dueDate }) {
   const accessToken = await getAccessToken();
 
   const requestBody = {
@@ -139,20 +139,36 @@ async function createTask({ assigneeUserId, title, dueDate, note }) {
     assignmentType: "ANY_ONE"
   };
 
-  console.log("タスク作成リクエスト:", JSON.stringify(requestBody, null, 2));
+  const jsonBody = JSON.stringify(requestBody);
+  console.log("タスク作成リクエスト:", jsonBody);
 
-  const response = await axios.post(
+  const response = await fetch(
     `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
-    requestBody,
     {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json"
-      }
+      },
+      body: jsonBody
     }
   );
 
-  return response.data;
+  const responseText = await response.text();
+  console.log("タスク作成レスポンス:", response.status, responseText);
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    data = { raw: responseText };
+  }
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(data));
+  }
+
+  return data;
 }
 
 async function notifyResult(message) {
