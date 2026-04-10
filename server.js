@@ -1,6 +1,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const axios = require("axios");
+const https = require("https");
 
 const app = express();
 app.use(express.json());
@@ -142,33 +143,42 @@ async function createTask({ assigneeUserId, title, dueDate }) {
   const jsonBody = JSON.stringify(requestBody);
   console.log("タスク作成リクエスト:", jsonBody);
 
-  const response = await fetch(
-    `https://www.worksapis.com/v1.0/users/${assigneeUserId}/tasks`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: jsonBody
+  const options = {
+    hostname: "www.worksapis.com",
+    path: `/v1.0/users/${assigneeUserId}/tasks`,
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(jsonBody, "utf8")
     }
-  );
+  };
 
-  const responseText = await response.text();
-  console.log("タスク作成レスポンス:", response.status, responseText);
+  const responseText = await new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let data = "";
 
-  let data;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    data = { raw: responseText };
-  }
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
 
-  if (!response.ok) {
-    throw new Error(JSON.stringify(data));
-  }
+      res.on("end", () => {
+        console.log("タスク作成レスポンス:", res.statusCode, data);
 
-  return data;
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data);
+        } else {
+          reject(new Error(data));
+        }
+      });
+    });
+
+    req.on("error", reject);
+    req.write(jsonBody);
+    req.end();
+  });
+
+  return JSON.parse(responseText);
 }
 
 async function notifyResult(message) {
@@ -215,17 +225,24 @@ app.post("/callback", async (req, res) => {
       return;
     }
 
+    if (!process.env.LW_REFRESH_TOKEN || process.env.LW_REFRESH_TOKEN === "TEMP") {
+      console.log("Refresh Token 未設定のため、タスク作成は未実行");
+      await notifyResult(
+        `解析成功: ${assignee.displayName} / ${parsed.title} / due=${parsed.dueDate || "なし"}`
+      );
+      return;
+    }
+
     const result = await createTask({
       assigneeUserId: assignee.userId,
       title: parsed.title,
-      dueDate: parsed.dueDate,
-      note: parsed.originalText
+      dueDate: parsed.dueDate
     });
 
     console.log("タスク作成成功:", JSON.stringify(result, null, 2));
     await notifyResult(`タスク作成成功: ${assignee.displayName} / ${parsed.title}`);
   } catch (error) {
-    console.error("処理エラー:", error.response?.data || error.message || error);
+    console.error("処理エラー:", error.message || error);
   }
 });
 
