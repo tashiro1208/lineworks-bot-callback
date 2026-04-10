@@ -174,12 +174,12 @@ async function sendRoomMessage({ roomId, text }) {
   }
 
   const botId = process.env.LW_BOT_ID;
-  const botToken = process.env.LW_BOT_TOKEN;
-
-  if (!botId || !botToken) {
-    console.log("LW_BOT_ID または LW_BOT_TOKEN 未設定のため返信スキップ");
+  if (!botId) {
+    console.log("LW_BOT_ID 未設定のため返信スキップ");
     return;
   }
+
+  const accessToken = await getAccessToken();
 
   const body = {
     content: {
@@ -193,7 +193,7 @@ async function sendRoomMessage({ roomId, text }) {
     body,
     {
       headers: {
-        Authorization: `Bearer ${botToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json"
       }
     }
@@ -202,10 +202,9 @@ async function sendRoomMessage({ roomId, text }) {
   console.log("Bot返信成功:", JSON.stringify(response.data, null, 2));
 }
 
-function buildSuccessMessage({ requesterName, assigneeName, dueDate, content }) {
+function buildSuccessMessage({ assigneeName, dueDate, content }) {
   return [
     "タスクを登録しました。",
-    requesterName ? `依頼者: ${requesterName}` : null,
     `担当: ${assigneeName}`,
     dueDate ? `期限: ${dueDate}` : "期限: 未設定",
     `内容: ${content}`
@@ -271,7 +270,6 @@ app.post("/callback", async (req, res) => {
     await sendRoomMessage({
       roomId: req.body?.source?.roomId,
       text: buildSuccessMessage({
-        requesterName: req.body?.source?.userName || "",
         assigneeName: assignee.displayName,
         dueDate: parsed.dueDate,
         content: parsed.content
