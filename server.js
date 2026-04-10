@@ -145,6 +145,12 @@ async function getAccessToken() {
     }
   });
 
+  console.log("トークン取得レスポンス:", JSON.stringify(response.data, null, 2));
+
+  if (!response.data || !response.data.access_token) {
+    throw new Error(`access_token取得失敗: ${JSON.stringify(response.data)}`);
+  }
+
   return response.data.access_token;
 }
 
