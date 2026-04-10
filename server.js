@@ -165,11 +165,11 @@ async function createTask({ assignorUserId, assigneeUserId, title, content, dueD
 
 /**
  * トークルームへBot返信
- * roomId がある場合のみ返信
+ * channelId がある場合のみ返信
  */
-async function sendRoomMessage({ roomId, text }) {
-  if (!roomId) {
-    console.log("roomId がないため返信スキップ");
+async function sendRoomMessage({ channelId, text }) {
+  if (!channelId) {
+    console.log("channelId がないため返信スキップ");
     return;
   }
 
@@ -189,7 +189,7 @@ async function sendRoomMessage({ roomId, text }) {
   };
 
   const response = await axios.post(
-    `https://www.worksapis.com/v1.0/bots/${botId}/channels/${roomId}/messages`,
+    `https://www.worksapis.com/v1.0/bots/${botId}/channels/${channelId}/messages`,
     body,
     {
       headers: {
@@ -251,7 +251,7 @@ app.post("/callback", async (req, res) => {
       console.log("担当者マスタ未登録:", parsed.assigneeName);
 
       await sendRoomMessage({
-        roomId: req.body?.source?.roomId,
+        channelId: req.body?.source?.channelId,
         text: buildErrorMessage(`担当者マスタ未登録: ${parsed.assigneeName}`)
       });
       return;
@@ -268,7 +268,7 @@ app.post("/callback", async (req, res) => {
     console.log("タスク作成成功:", JSON.stringify(result, null, 2));
 
     await sendRoomMessage({
-      roomId: req.body?.source?.roomId,
+      channelId: req.body?.source?.channelId,
       text: buildSuccessMessage({
         assigneeName: assignee.displayName,
         dueDate: parsed.dueDate,
@@ -280,7 +280,7 @@ app.post("/callback", async (req, res) => {
 
     try {
       await sendRoomMessage({
-        roomId: req.body?.source?.roomId,
+        channelId: req.body?.source?.channelId,
         text: buildErrorMessage(
           typeof error.message === "string" ? error.message : "不明なエラー"
         )
