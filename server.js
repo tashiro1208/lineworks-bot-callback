@@ -63,6 +63,39 @@ function parseTaskText(text) {
     const day = Number(deadlineMatch[2]);
 
     const now = new Date();
+    function parseTaskText(text) {
+  if (!text) return null;
+
+  let lines = text
+    .split("\n")
+    .map(v => v.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) return null;
+
+  // 先頭がBotメンションなら取り除く
+  if (lines[0].startsWith("@")) {
+    lines = lines.slice(1);
+  }
+
+  if (lines.length < 2) return null;
+
+  const assigneeLine = lines[0];
+  const assigneeMatch = assigneeLine.match(/^(.+?)へ$/);
+  if (!assigneeMatch) return null;
+
+  const assigneeName = assigneeMatch[1].trim();
+  const restText = lines.slice(1).join(" ").trim();
+
+  let dueDate = null;
+  let content = restText;
+
+  const deadlineMatch = restText.match(/(\d{1,2})月(\d{1,2})日までに/);
+  if (deadlineMatch) {
+    const month = Number(deadlineMatch[1]);
+    const day = Number(deadlineMatch[2]);
+
+    const now = new Date();
     let year = now.getFullYear();
 
     const tentative = new Date(year, month - 1, day);
