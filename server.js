@@ -18,7 +18,7 @@ const ASSIGNEE_MASTER = {
     displayName: "フジ子さんチーム"
   },
   "田代健": {
-    userId: "USER_ID_KEN_TASHIRO",
+    userId: "50bde2c2-34b1-401e-10db-05079b77bc42",
     displayName: "田代健"
   },
   "坂下めぐみ": {
