@@ -7,8 +7,14 @@ const app = express();
 app.use(express.json());
 
 /**
+ * Bot専用ユーザーの userId
+ * ここを本物に置き換える
+ */
+const BOT_ASSIGNOR_USER_ID = "BOT_USER_ID_HERE";
+
+/**
  * 担当者マスタ
- * ここに実ユーザーIDを入れる
+ * ここを本物に置き換える
  */
 const ASSIGNEE_MASTER = {
   "フジ子さんチーム": {
@@ -157,6 +163,61 @@ async function createTask({ assignorUserId, assigneeUserId, title, content, dueD
   return JSON.parse(responseText);
 }
 
+/**
+ * トークルームへBot返信
+ * roomId がある場合のみ返信
+ */
+async function sendRoomMessage({ roomId, text }) {
+  if (!roomId) {
+    console.log("roomId がないため返信スキップ");
+    return;
+  }
+
+  const botId = process.env.LW_BOT_ID;
+  const botToken = process.env.LW_BOT_TOKEN;
+
+  if (!botId || !botToken) {
+    console.log("LW_BOT_ID または LW_BOT_TOKEN 未設定のため返信スキップ");
+    return;
+  }
+
+  const body = {
+    content: {
+      type: "text",
+      text
+    }
+  };
+
+  const response = await axios.post(
+    `https://www.worksapis.com/v1.0/bots/${botId}/channels/${roomId}/messages`,
+    body,
+    {
+      headers: {
+        Authorization: `Bearer ${botToken}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  console.log("Bot返信成功:", JSON.stringify(response.data, null, 2));
+}
+
+function buildSuccessMessage({ requesterName, assigneeName, dueDate, content }) {
+  return [
+    "タスクを登録しました。",
+    requesterName ? `依頼者: ${requesterName}` : null,
+    `担当: ${assigneeName}`,
+    dueDate ? `期限: ${dueDate}` : "期限: 未設定",
+    `内容: ${content}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildErrorMessage(message) {
+  return `タスク登録に失敗しました。\n${message}`;
+}
+
 app.post("/callback", async (req, res) => {
   try {
     console.log("受信データ:", JSON.stringify(req.body, null, 2));
@@ -174,11 +235,7 @@ app.post("/callback", async (req, res) => {
     }
     processedEvents.add(eventId);
 
-    const text =
-      req.body?.content?.text ||
-      req.body?.text ||
-      "";
-
+    const text = req.body?.content?.text || req.body?.text || "";
     if (!text) {
       console.log("テキストなしのため終了");
       return;
@@ -193,17 +250,16 @@ app.post("/callback", async (req, res) => {
     const assignee = ASSIGNEE_MASTER[parsed.assigneeName];
     if (!assignee) {
       console.log("担当者マスタ未登録:", parsed.assigneeName);
-      return;
-    }
 
-    const assignorUserId = req.body?.source?.userId;
-    if (!assignorUserId) {
-      console.log("依頼者userId取得失敗");
+      await sendRoomMessage({
+        roomId: req.body?.source?.roomId,
+        text: buildErrorMessage(`担当者マスタ未登録: ${parsed.assigneeName}`)
+      });
       return;
     }
 
     const result = await createTask({
-      assignorUserId,
+      assignorUserId: BOT_ASSIGNOR_USER_ID,
       assigneeUserId: assignee.userId,
       title: parsed.title,
       content: parsed.content,
@@ -211,8 +267,29 @@ app.post("/callback", async (req, res) => {
     });
 
     console.log("タスク作成成功:", JSON.stringify(result, null, 2));
+
+    await sendRoomMessage({
+      roomId: req.body?.source?.roomId,
+      text: buildSuccessMessage({
+        requesterName: req.body?.source?.userName || "",
+        assigneeName: assignee.displayName,
+        dueDate: parsed.dueDate,
+        content: parsed.content
+      })
+    });
   } catch (error) {
     console.error("処理エラー:", error.message || error);
+
+    try {
+      await sendRoomMessage({
+        roomId: req.body?.source?.roomId,
+        text: buildErrorMessage(
+          typeof error.message === "string" ? error.message : "不明なエラー"
+        )
+      });
+    } catch (replyError) {
+      console.error("返信エラー:", replyError.message || replyError);
+    }
   }
 });
 
